@@ -1,4 +1,4 @@
-module github.com/longportapp/openapi-protocol/go
+module github.com/longbridge/openapi-protocol/go
 
 go 1.17
 
@@ -6,8 +6,8 @@ require (
 	github.com/Allenxuxu/ringbuffer v0.0.11
 	github.com/golang/protobuf v1.5.2
 	github.com/gorilla/websocket v1.5.0
+	github.com/longbridge/openapi-protobufs/gen/go v0.7.0
 	github.com/longbridgeapp/assert v0.1.0
-	github.com/longportapp/openapi-protobufs/gen/go v0.4.0
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.7.0
 	google.golang.org/protobuf v1.28.1

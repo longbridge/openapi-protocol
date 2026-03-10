@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/Allenxuxu/ringbuffer"
-	protocol "github.com/longportapp/openapi-protocol/go"
-	_ "github.com/longportapp/openapi-protocol/go/v1"
-	_ "github.com/longportapp/openapi-protocol/go/v2"
+	protocol "github.com/longbridge/openapi-protocol/go"
+	_ "github.com/longbridge/openapi-protocol/go/v1"
+	_ "github.com/longbridge/openapi-protocol/go/v2"
 	"github.com/pkg/errors"
 )
 

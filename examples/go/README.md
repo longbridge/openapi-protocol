@@ -1,6 +1,6 @@
 # Golang example
 
-Before run the example code, your should get the [socket token](https://open.longportapp.com/en/docs/socket-token-api) first.
+Before run the example code, your should get the [socket token](https://open.longbridge.com/en/docs/socket-token-api) first.
 
 ## run quote example
 
