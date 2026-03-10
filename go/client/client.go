@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
+	protocol "github.com/longbridge/openapi-protocol/go"
 
-	control "github.com/longportapp/openapi-protobufs/gen/go/control"
+	control "github.com/longbridge/openapi-protobufs/gen/go/control"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )

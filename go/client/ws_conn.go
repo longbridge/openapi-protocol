@@ -10,12 +10,12 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	control "github.com/longportapp/openapi-protobufs/gen/go/control"
+	control "github.com/longbridge/openapi-protobufs/gen/go/control"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
-	_ "github.com/longportapp/openapi-protocol/go/v1"
+	protocol "github.com/longbridge/openapi-protocol/go"
+	_ "github.com/longbridge/openapi-protocol/go/v1"
 )
 
 func init() {

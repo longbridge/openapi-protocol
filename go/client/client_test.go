@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/ptypes/empty"
-	control "github.com/longportapp/openapi-protobufs/gen/go/control"
+	control "github.com/longbridge/openapi-protobufs/gen/go/control"
 	"github.com/stretchr/testify/assert"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
+	protocol "github.com/longbridge/openapi-protocol/go"
 )
 
 func init() {

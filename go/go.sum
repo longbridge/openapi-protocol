@@ -15,10 +15,10 @@ github.com/kr/pretty v0.1.0/go.mod h1:dAy3ld7l9f0ibDNOQOHHMYYIIbhfbHSm3C4ZsoJORN
 github.com/kr/pty v1.1.1/go.mod h1:pFQYn66WHrOpPYNljwOMqo10TkYh1fy3cYio2l3bCsQ=
 github.com/kr/text v0.1.0 h1:45sCR5RtlFHMR4UwH9sdQ5TC8v0qDQCHnXt+kaKSTVE=
 github.com/kr/text v0.1.0/go.mod h1:4Jbv+DJW3UT/LiOwJeYQe1efqtUx/iVham/4vfdArNI=
+github.com/longbridge/openapi-protobufs/gen/go v0.7.0 h1:AP5rxymZqDVMBQ8hR9hntvFa9ScOoXIdNVzXE6xtJic=
+github.com/longbridge/openapi-protobufs/gen/go v0.7.0/go.mod h1:+wh92EcM7YJ+Puc6nZf9duFIXGNYI1GJbnvE+PaDtdY=
 github.com/longbridgeapp/assert v0.1.0 h1:KkQlHUJSpuUFkUDjwBJgghFl31+wwSDHTq/WRrvLjko=
 github.com/longbridgeapp/assert v0.1.0/go.mod h1:ew3umReliXtk1bBG4weVURxdvR0tsN+rCEfjnA4YfxI=
-github.com/longportapp/openapi-protobufs/gen/go v0.4.0 h1:+wD5sq/DZS7HCUL6nOe7v7nNuM1EvuEDluk69f2+2nM=
-github.com/longportapp/openapi-protobufs/gen/go v0.4.0/go.mod h1:/chiEwEW4CnOVgKTaCf8rQUwes00Ku8q1CvRpOueWfo=
 github.com/pkg/errors v0.9.1 h1:FEBLx1zS214owpjy7qsBeixbURkuhQAwrK5UwLGTwt4=
 github.com/pkg/errors v0.9.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=

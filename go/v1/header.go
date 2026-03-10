@@ -7,7 +7,7 @@ import (
 	"github.com/Allenxuxu/ringbuffer"
 	"github.com/pkg/errors"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
+	protocol "github.com/longbridge/openapi-protocol/go"
 )
 
 var ErrUnknowPacket = errors.New("invalid packet type")

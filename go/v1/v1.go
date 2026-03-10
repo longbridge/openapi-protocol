@@ -5,8 +5,8 @@ import (
 
 	"github.com/Allenxuxu/ringbuffer"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
-	"github.com/longportapp/openapi-protocol/go/gzip"
+	protocol "github.com/longbridge/openapi-protocol/go"
+	"github.com/longbridge/openapi-protocol/go/gzip"
 )
 
 func init() {

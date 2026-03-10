@@ -7,7 +7,7 @@ import (
 	"github.com/Allenxuxu/ringbuffer"
 	"github.com/stretchr/testify/assert"
 
-	protocol "github.com/longportapp/openapi-protocol/go"
+	protocol "github.com/longbridge/openapi-protocol/go"
 )
 
 var v1 = &protocolV1{}

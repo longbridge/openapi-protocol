@@ -3,7 +3,7 @@ package protocol
 import (
 	"encoding/json"
 
-	control "github.com/longportapp/openapi-protobufs/gen/go/control"
+	control "github.com/longbridge/openapi-protobufs/gen/go/control"
 	"github.com/pkg/errors"
 	"google.golang.org/protobuf/proto"
 )
