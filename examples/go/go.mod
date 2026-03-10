@@ -3,7 +3,7 @@ module main
 go 1.18
 
 require (
-	github.com/longbridge/openapi-protocol/go v0.3.0
+	github.com/longbridge/openapi-protocol/go v0.5.0
 	github.com/longbridge/openapi-protobufs/gen/go v0.7.0
 )
 
