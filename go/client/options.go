@@ -8,28 +8,32 @@ import (
 )
 
 var (
-	defaultDialTimeout      = time.Second * 5
-	defaultAuthTimeout      = time.Second * 10
-	defaultKeepalive        = time.Second * 60
-	defaultKeepaliveTimeout = defaultKeepalive * 2
-	defaultWriteQueueSize   = 16
-	defaultReadBufferSize   = 4096
-	defaultReadQueueSize    = 16
-	defaultMinGzipSize      = 1024
+	defaultDialTimeout         = time.Second * 5
+	defaultAuthTimeout         = time.Second * 10
+	defaultKeepalive           = time.Second * 60
+	defaultKeepaliveTimeout    = defaultKeepalive * 2
+	defaultWriteQueueSize      = 16
+	defaultReadBufferSize      = 4096
+	defaultReadQueueSize       = 16
+	defaultMinGzipSize         = 1024
+	defaultMinReconnectBackoff = time.Second * 1
+	defaultMaxReconnectBackoff = time.Second * 30
 
 	defaultRequestTimeout = time.Second * 10
 )
 
 func newDialOptions(opts ...DialOption) *DialOptions {
 	o := &DialOptions{
-		Timeout:          defaultDialTimeout,
-		AuthTimeout:      defaultAuthTimeout,
-		KeepaliveTimeout: defaultKeepaliveTimeout,
-		Keepalive:        defaultKeepalive,
-		ReadBufferSize:   defaultReadBufferSize,
-		ReadQueueSize:    defaultReadQueueSize,
-		WriteQueueSize:   defaultWriteQueueSize,
-		MinGzipSize:      defaultMinGzipSize,
+		Timeout:             defaultDialTimeout,
+		AuthTimeout:         defaultAuthTimeout,
+		KeepaliveTimeout:    defaultKeepaliveTimeout,
+		Keepalive:           defaultKeepalive,
+		ReadBufferSize:      defaultReadBufferSize,
+		ReadQueueSize:       defaultReadQueueSize,
+		WriteQueueSize:      defaultWriteQueueSize,
+		MinGzipSize:         defaultMinGzipSize,
+		MinReconnectBackoff: defaultMinReconnectBackoff,
+		MaxReconnectBackoff: defaultMaxReconnectBackoff,
 	}
 
 	for _, opt := range opts {
@@ -44,17 +48,19 @@ type DialOption func(*DialOptions)
 
 // DialOptions are config for dial
 type DialOptions struct {
-	AuthTokenGetter  func() (string, error)
-	AuthTimeout      time.Duration
-	Timeout          time.Duration
-	Keepalive        time.Duration
-	KeepaliveTimeout time.Duration
-	WriteQueueSize   int
-	ReadQueueSize    int
-	ReadBufferSize   int
-	MinGzipSize      int
-	MaxReconnect     int
-	ProxyFor         string
+	AuthTokenGetter     func() (string, error)
+	AuthTimeout         time.Duration
+	Timeout             time.Duration
+	Keepalive           time.Duration
+	KeepaliveTimeout    time.Duration
+	WriteQueueSize      int
+	ReadQueueSize       int
+	ReadBufferSize      int
+	MinGzipSize         int
+	MaxReconnect        int
+	MinReconnectBackoff time.Duration
+	MaxReconnectBackoff time.Duration
+	ProxyFor            string
 }
 
 // ReadBufferSize set read buffer size, unit: KB
@@ -135,6 +141,18 @@ func MaxReconnect(i int) DialOption {
 	return func(o *DialOptions) {
 		if i > 0 {
 			o.MaxReconnect = i
+		}
+	}
+}
+
+// ReconnectBackoff sets min and max backoff duration for reconnect
+func ReconnectBackoff(min, max time.Duration) DialOption {
+	return func(o *DialOptions) {
+		if min > 0 {
+			o.MinReconnectBackoff = min
+		}
+		if max > 0 {
+			o.MaxReconnectBackoff = max
 		}
 	}
 }

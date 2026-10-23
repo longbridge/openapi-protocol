@@ -80,7 +80,8 @@ type client struct {
 
 	conn ClientConn
 
-	closeCh chan struct{}
+	closeOnce sync.Once
+	closeCh   chan struct{}
 
 	// custom ping packet handler
 	onPing func(*protocol.Packet)
@@ -100,10 +101,12 @@ type client struct {
 	recvsMu sync.RWMutex
 	recvs   map[uint32]chan *protocol.Packet
 
-	lastKeepaliveId uint32
-	lastPongAt      time.Time
-	reconnectCount  int
-	doReconnectting bool
+	lastKeepaliveId  uint32
+	lastPongAt       time.Time
+	lastConnectedAt  time.Time
+	reconnectBackoff time.Duration
+	reconnectCount   int
+	doReconnectting  bool
 
 	addr            *url.URL
 	dialOptions     *DialOptions
@@ -143,7 +146,15 @@ func (c *client) Dial(ctx context.Context, u string, handshake *protocol.Handsha
 		go c.keepalive()
 	}
 
-	return c.auth()
+	if err = c.auth(); err != nil {
+		return err
+	}
+
+	c.Lock()
+	c.lastConnectedAt = time.Now()
+	c.Unlock()
+
+	return nil
 }
 
 func (c *client) AuthInfo() *control.AuthResponse {
@@ -201,9 +212,49 @@ func (c *client) auth() error {
 	return nil
 }
 
+const stableConnDuration = 30 * time.Second
+
+func (c *client) isClosed() bool {
+	select {
+	case <-c.closeCh:
+		return true
+	default:
+		return false
+	}
+}
+
+func (c *client) minBackoff() time.Duration {
+	if c.dialOptions != nil && c.dialOptions.MinReconnectBackoff > 0 {
+		return c.dialOptions.MinReconnectBackoff
+	}
+	return defaultMinReconnectBackoff
+}
+
+func (c *client) maxBackoff() time.Duration {
+	if c.dialOptions != nil && c.dialOptions.MaxReconnectBackoff > 0 {
+		return c.dialOptions.MaxReconnectBackoff
+	}
+	return defaultMaxReconnectBackoff
+}
+
+func (c *client) nextBackoffLocked() time.Duration {
+	minB := c.minBackoff()
+	maxB := c.maxBackoff()
+	d := c.reconnectBackoff
+	if d < minB {
+		d = minB
+	}
+	next := d * 2
+	if next > maxB {
+		next = maxB
+	}
+	c.reconnectBackoff = next
+	return d
+}
+
 func (c *client) reconnecting() {
 	c.Lock()
-	if c.doReconnectting {
+	if c.doReconnectting || c.isClosed() {
 		c.Unlock()
 		return
 	}
@@ -218,12 +269,41 @@ func (c *client) reconnecting() {
 			waitCh <- struct{}{}
 		}()
 
+		// If connection dropped too quickly (flapping), back off before the first retry to prevent reconnection storm
+		c.Lock()
+		if !c.lastConnectedAt.IsZero() {
+			if time.Since(c.lastConnectedAt) < stableConnDuration {
+				delay := c.nextBackoffLocked()
+				c.Unlock()
+				c.Logger.Warnf("connection dropped too quickly (flapping), backing off for %v before reconnecting", delay)
+				select {
+				case <-c.closeCh:
+					return
+				case <-time.After(delay):
+				}
+			} else {
+				c.reconnectBackoff = c.minBackoff()
+				c.reconnectCount = 0
+				c.Unlock()
+			}
+		} else {
+			c.Unlock()
+		}
+
 		for {
+			if c.isClosed() {
+				return
+			}
+
 			c.Logger.Info("start reconnecting.")
 
 			err := c.reconnect()
 
 			if err == nil {
+				c.Lock()
+				c.lastConnectedAt = time.Now()
+				c.Unlock()
+
 				c.Logger.Info("reconnect success")
 				if c.afterReconnected != nil {
 					c.afterReconnected()
@@ -239,8 +319,15 @@ func (c *client) reconnecting() {
 
 			c.Logger.Errorf("reconnect failed, err: %v", err)
 
-			// TODO: dynamic value for sleepping
-			time.Sleep(time.Second * 1)
+			c.Lock()
+			delay := c.nextBackoffLocked()
+			c.Unlock()
+
+			select {
+			case <-c.closeCh:
+				return
+			case <-time.After(delay):
+			}
 		}
 	}()
 
@@ -252,13 +339,16 @@ func (c *client) reconnecting() {
 }
 
 func (c *client) reconnect() error {
+	c.Lock()
 	if c.dialOptions.MaxReconnect > 0 {
 		if c.reconnectCount >= c.dialOptions.MaxReconnect {
+			c.Unlock()
 			return ErrHitMaxReconnect
 		}
 	}
 
 	c.reconnectCount = c.reconnectCount + 1
+	c.Unlock()
 
 	if c.conn != nil {
 		c.conn.Close(errors.New("close old conn for reconnect"))
@@ -314,7 +404,6 @@ func (c *client) reconnectDial() error {
 	}
 
 	c.authInfo = &info
-	c.reconnectCount = 0
 	c.lastKeepaliveId = 0
 	return nil
 }
@@ -404,16 +493,18 @@ func (c *client) AfterReconnected(fn func()) {
 
 // Close used to close conn between server
 func (c *client) Close(err error) error {
-	c.Logger.Info("close client")
-	close(c.closeCh)
-	c.RLock()
-	if c.conn != nil {
-		c.conn.Close(errors.New("close by client"))
-	}
-	c.RUnlock()
-	if c.onClose != nil {
-		c.onClose(err)
-	}
+	c.closeOnce.Do(func() {
+		c.Logger.Info("close client")
+		close(c.closeCh)
+		c.RLock()
+		if c.conn != nil {
+			c.conn.Close(errors.New("close by client"))
+		}
+		c.RUnlock()
+		if c.onClose != nil {
+			c.onClose(err)
+		}
+	})
 	return nil
 }
 
