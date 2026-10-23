@@ -62,6 +62,7 @@ func dialWSConn(ctx context.Context, logger protocol.Logger, uri *url.URL, hands
 		p:             p,
 		conn:          conn,
 		writeCh:       make(chan []byte, o.WriteQueueSize),
+		packetCh:      make(chan *protocol.Packet, o.ReadQueueSize),
 		dopts:         *o,
 		closeCh:       make(chan struct{}),
 		closeCallback: newCloseCallback(),
@@ -70,8 +71,6 @@ func dialWSConn(ctx context.Context, logger protocol.Logger, uri *url.URL, hands
 	c.conn.SetCloseHandler(c.onClose)
 	c.conn.SetPingHandler(c.onPing)
 	c.conn.SetPongHandler(c.onPong)
-
-	c.closeCh = make(chan struct{})
 
 	c.communicating()
 
@@ -143,46 +142,54 @@ func (conn *wsConn) writeClose(p *protocol.Packet) error {
 	return conn.conn.WriteControl(websocket.CloseMessage, p.Body, time.Now().Add(time.Second*3))
 }
 
-func (conn *wsConn) write(data []byte) error {
-	if conn.closed() {
-		return errConnClosed
-	}
-
+func (conn *wsConn) write(data []byte) (err error) {
 	select {
-	case conn.writeCh <- data:
-		return nil
+	case <-conn.closeCh:
+		return errConnClosed
 	default:
 	}
 
-	return errors.Errorf("write queue full, len: %d", len(conn.writeCh))
+	defer func() {
+		if r := recover(); r != nil {
+			err = errConnClosed
+		}
+	}()
+
+	select {
+	case <-conn.closeCh:
+		return errConnClosed
+	case conn.writeCh <- data:
+		return nil
+	default:
+		return errors.Errorf("write queue full, len: %d", len(conn.writeCh))
+	}
 }
 
 func (conn *wsConn) OnPacket(fn func(*protocol.Packet, error)) {
 	// OnPacket can only invoke once
 	conn.onPacketOnce.Do(func() {
-		conn.packetCh = make(chan *protocol.Packet, conn.dopts.ReadQueueSize)
-
 		go func() {
-			defer close(conn.packetCh)
-
 			for {
-				if conn.closed() {
-					// consume all packet
-					if l := len(conn.packetCh); l > 0 {
-						for i := 0; i < l; i++ {
-							p := <-conn.packetCh
-							fn(p, nil)
+				select {
+				case <-conn.closeCh:
+					// connection closed: drain remaining buffered packets
+					for {
+						select {
+						case p := <-conn.packetCh:
+							if p != nil {
+								fn(p, nil)
+							}
+						default:
+							// queue fully drained, deliver close notification and exit
+							fn(nil, errConnClosed)
+							return
 						}
-
 					}
-
-					fn(nil, errConnClosed)
-					return
+				case p := <-conn.packetCh:
+					if p != nil {
+						fn(p, nil)
+					}
 				}
-
-				p := <-conn.packetCh
-
-				fn(p, nil)
 			}
 		}()
 	})
@@ -195,10 +202,11 @@ func (conn *wsConn) Close(err error) {
 	// Close can only invoke once
 	conn.closeOnce.Do(func() {
 		conn.logger.Errorf("close conn, err: %v", err)
-		close(conn.closeCh)
-		close(conn.writeCh)
+		close(conn.closeCh) // single source of truth: broadcast connection closed
 
-		_ = conn.conn.Close()
+		if conn.conn != nil {
+			_ = conn.conn.Close()
+		}
 
 		conn.DispatchClose(err)
 	})
@@ -294,28 +302,44 @@ func (conn *wsConn) readPacket(data []byte) error {
 	return nil
 }
 
-func (conn *wsConn) addPacket(p *protocol.Packet) {
+func (conn *wsConn) addPacket(p *protocol.Packet) bool {
+	// do not enqueue if connection is closed
 	select {
-	case conn.packetCh <- p:
+	case <-conn.closeCh:
+		return false
 	default:
-		conn.logger.Warn("drop packet for channel full")
+	}
+
+	defer func() {
+		if r := recover(); r != nil {
+			conn.logger.Warnf("drop packet on closed channel: %v", r)
+		}
+	}()
+
+	select {
+	case <-conn.closeCh:
+		return false
+	case conn.packetCh <- p:
+		return true
+	default:
+		conn.logger.Warnf("packet queue full (%d), dropping packet", cap(conn.packetCh))
+		return false
 	}
 }
 
 func (conn *wsConn) writing() {
 	for {
-		b, ok := <-conn.writeCh
-		if !ok {
+		select {
+		case <-conn.closeCh:
 			return
-		}
-
-		if conn.closed() {
-			return
-		}
-
-		if err := conn.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
-			conn.Close(err)
-			return
+		case b := <-conn.writeCh:
+			if conn.closed() {
+				return
+			}
+			if err := conn.conn.WriteMessage(websocket.BinaryMessage, b); err != nil {
+				conn.Close(err)
+				return
+			}
 		}
 	}
 }

@@ -2,7 +2,9 @@ package client
 
 import (
 	"context"
+	"errors"
 	"net/url"
+	"sync"
 	"testing"
 	"time"
 
@@ -225,6 +227,36 @@ func TestClientReconnect(t *testing.T) {
 	assert.Equal(t, "session", cli.authInfo.SessionId)
 }
 
+func TestClientReconnectBackoffProgression(t *testing.T) {
+	c, _ := newClientAndDial(ReconnectBackoff(10*time.Millisecond, 80*time.Millisecond))
+	cli := c.(*client)
+
+	cli.Lock()
+	b1 := cli.nextBackoffLocked()
+	b2 := cli.nextBackoffLocked()
+	b3 := cli.nextBackoffLocked()
+	b4 := cli.nextBackoffLocked()
+	b5 := cli.nextBackoffLocked()
+	cli.Unlock()
+
+	assert.Equal(t, 10*time.Millisecond, b1)
+	assert.Equal(t, 20*time.Millisecond, b2)
+	assert.Equal(t, 40*time.Millisecond, b3)
+	assert.Equal(t, 80*time.Millisecond, b4)
+	assert.Equal(t, 80*time.Millisecond, b5)
+}
+
+func TestClientCloseIdempotent(t *testing.T) {
+	c, _ := newClientAndDial()
+	cli := c.(*client)
+
+	assert.False(t, cli.isClosed())
+	assert.Nil(t, cli.Close(nil))
+	assert.True(t, cli.isClosed())
+	// Calling Close again must not panic
+	assert.Nil(t, cli.Close(nil))
+}
+
 func TestClientSubscribe(t *testing.T) {
 	c, _ := newClientAndDial()
 	cli := c.(*client)
@@ -277,3 +309,106 @@ func TestClientOnPingPong(t *testing.T) {
 	<-waitCh
 	<-waitCh
 }
+
+func TestWSConn_ConcurrentCloseAndAddPacket(t *testing.T) {
+	conn := &wsConn{
+		logger:        &protocol.DefaultLogger{},
+		writeCh:       make(chan []byte, 16),
+		packetCh:      make(chan *protocol.Packet, 16),
+		closeCh:       make(chan struct{}),
+		closeCallback: newCloseCallback(),
+	}
+
+	receivedCount := 0
+	done := make(chan struct{})
+	conn.OnPacket(func(p *protocol.Packet, err error) {
+		if err != nil {
+			assert.Equal(t, errConnClosed, err)
+			close(done)
+			return
+		}
+		receivedCount++
+	})
+
+	// 并发向 addPacket 投递包，同时并发调用 Close
+	const routines = 10
+	const msgsPerRoutine = 50
+	var wg sync.WaitGroup
+
+	for i := 0; i < routines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < msgsPerRoutine; j++ {
+				p := &protocol.Packet{}
+				conn.addPacket(p)
+				_ = conn.write([]byte("data"))
+			}
+		}()
+	}
+
+	// simulate abrupt connection close while writing
+	time.Sleep(time.Millisecond * 2)
+	conn.Close(errors.New("closed during concurrent send"))
+
+	wg.Wait()
+
+	select {
+	case <-done:
+		// OnPacket 协程必须在排空后收到 errConnClosed 并正常退出，不能泄漏或阻塞
+	case <-time.After(time.Second * 2):
+		t.Fatal("timeout waiting for OnPacket to exit after close")
+	}
+
+	// 验证已关闭状态下再次投递安全快速返回 false，绝对不 panic
+	p := &protocol.Packet{}
+	assert.False(t, conn.addPacket(p))
+	assert.Equal(t, errConnClosed, conn.write([]byte("more")))
+}
+
+func TestTCPConn_ConcurrentCloseAndAddPacket(t *testing.T) {
+	conn := &tcpConn{
+		logger:        &protocol.DefaultLogger{},
+		writeCh:       make(chan []byte, 16),
+		packetCh:      make(chan *protocol.Packet, 16),
+		closeCh:       make(chan struct{}),
+		closeCallback: newCloseCallback(),
+	}
+
+	done := make(chan struct{})
+	conn.OnPacket(func(p *protocol.Packet, err error) {
+		if err != nil {
+			assert.Equal(t, errConnClosed, err)
+			close(done)
+			return
+		}
+	})
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 50; j++ {
+				p := &protocol.Packet{}
+				conn.addPacket(p)
+				_ = conn.write([]byte("test"))
+			}
+		}()
+	}
+
+	time.Sleep(time.Millisecond * 2)
+	conn.Close(errors.New("closed tcp conn"))
+	wg.Wait()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second * 2):
+		t.Fatal("timeout waiting for tcp OnPacket to exit after close")
+	}
+
+	p := &protocol.Packet{}
+	assert.False(t, conn.addPacket(p))
+	assert.Equal(t, errConnClosed, conn.write([]byte("more")))
+}
+
